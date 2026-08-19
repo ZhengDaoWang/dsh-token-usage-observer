@@ -38,12 +38,13 @@ function renderGroups(groups: UsageGroup[]): string[] {
 function renderSessions(sessions: UsageSession[]): string[] {
   if (sessions.length === 0) return ['- 无匹配记录']
   const lines: string[] = [
-    '| 来源 | 会话 | 模型/预设 | 时间 | 请求数 | 输入(未缓存) | 输入(缓存命中) | 缓存写入 | 输出 | 命中率 | 费用 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| 来源 | 会话名称 | 会话ID | 模型/预设 | 时间 | 请求数 | 输入(未缓存) | 输入(缓存命中) | 缓存写入 | 输出 | 命中率 | 费用 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   for (const session of sessions) {
     const time = session.timestamp > 0 ? new Date(session.timestamp).toISOString().slice(0, 10) : '-'
-    lines.push(`| ${session.source} | ${session.session} | ${session.category} | ${time} | ${fmt(session.requests)} | ${fmt(session.cacheMiss)} | ${fmt(session.cacheHit)} | ${fmt(session.cacheWrite)} | ${fmt(session.output)} | ${pct(session.cacheHitRate)} | ${usd(session.estimatedCost)} |`)
+    const name = session.sessionName && session.sessionName !== '' ? session.sessionName : '-'
+    lines.push(`| ${session.source} | ${name} | ${session.session} | ${session.category} | ${time} | ${fmt(session.requests)} | ${fmt(session.cacheMiss)} | ${fmt(session.cacheHit)} | ${fmt(session.cacheWrite)} | ${fmt(session.output)} | ${pct(session.cacheHitRate)} | ${usd(session.estimatedCost)} |`)
   }
   return lines
 }

@@ -129,6 +129,7 @@ export function apply(ctx: Context, config: PluginConfig = {}): void {
                 key: { type: 'string' },
                 source: { type: 'string' },
                 session: { type: 'string' },
+                sessionName: { type: 'string' },
                 category: { type: 'string' },
                 timestamp: { type: 'integer' },
                 requests: { type: 'integer' },

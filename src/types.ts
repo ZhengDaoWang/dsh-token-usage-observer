@@ -27,8 +27,10 @@ export interface UsageRecord {
   cacheWrite: number
   /** Origin file the record was parsed from. */
   file: string
-  /** Session identifier: harness session dir name, codex rollout file, opencode db row id. */
+  /** Session identifier: harness session dir name, codex rollout id, opencode db row id. */
   session: string
+  /** Human-readable session name/title when the source provides one; empty otherwise. */
+  sessionName?: string
 }
 
 /** Aggregated token totals for one bucket. */
@@ -57,6 +59,8 @@ export interface UsageSession extends UsageTotals {
   source: Source
   /** Session id (harness session-<uuid>, codex rollout id, opencode db row id). */
   session: string
+  /** Human-readable session name/title; empty when the source provides none. */
+  sessionName?: string
   /** Model / agent preset of the session (best known). */
   category: string
   /** Latest record timestamp in the session (epoch ms). */

@@ -146,6 +146,7 @@ function summarizeSessions(records: UsageRecord[], prices: Prices): UsageSession
       addTotals(existing, record)
       if (record.category !== 'unknown' && record.category !== existing.category) existing.category = record.category
       if (record.timestamp > existing.timestamp) existing.timestamp = record.timestamp
+      if (record.sessionName && record.sessionName !== existing.sessionName) existing.sessionName = record.sessionName
     } else {
       const totals = emptyTotals()
       addTotals(totals, record)
@@ -153,6 +154,7 @@ function summarizeSessions(records: UsageRecord[], prices: Prices): UsageSession
         key,
         source: record.source,
         session: record.session,
+        sessionName: record.sessionName,
         category: record.category,
         timestamp: record.timestamp,
         ...totals,

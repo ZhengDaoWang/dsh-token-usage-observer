@@ -46,6 +46,12 @@ function shortSession(session: string): string {
   return tail.length > 12 ? `…${tail.slice(-12)}` : `…${tail}`
 }
 
+/** Display label for a session row: the real name when available, else the short id. */
+function sessionLabel(session: UsageSession): string {
+  const name = session.sessionName?.trim()
+  return name !== undefined && name !== '' ? name : shortSession(session.session)
+}
+
 export function Dashboard({ api }: DashboardProps): JSX.Element {
   const [source, setSource] = useState<'all' | 'deepseek-harness' | 'codex' | 'opencode'>('all')
   const [from, setFrom] = useState('')
@@ -271,7 +277,8 @@ export function Dashboard({ api }: DashboardProps): JSX.Element {
                 <thead>
                   <tr>
                     <th className="dsh-tu-left">来源</th>
-                    <th className="dsh-tu-left">会话</th>
+                    <th className="dsh-tu-left">会话名称</th>
+                    <th className="dsh-tu-left">会话 ID</th>
                     <th className="dsh-tu-left">模型 / 预设</th>
                     <th className="dsh-tu-left">最近时间</th>
                     <th>请求数</th>
@@ -287,6 +294,7 @@ export function Dashboard({ api }: DashboardProps): JSX.Element {
                   {sessions.map((session: UsageSession) => (
                     <tr key={session.key}>
                       <td className="dsh-tu-left">{sourceLabel(session.source)}</td>
+                      <td className="dsh-tu-left" title={session.sessionName ?? session.session}>{sessionLabel(session)}</td>
                       <td className="dsh-tu-left" title={session.session}>{shortSession(session.session)}</td>
                       <td className="dsh-tu-left" title={session.category}>{session.category}</td>
                       <td className="dsh-tu-left">{session.timestamp > 0 ? new Date(session.timestamp).toISOString().slice(0, 10) : '-'}</td>

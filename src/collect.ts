@@ -171,6 +171,10 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
       let agentPreset = 'unknown'
       let model = 'unknown'
       let createdAt = 0
+      // Human-readable title: DSH writes `session/title` events. Prefer the
+      // LLM/provider-generated title over the fallback one.
+      let title = ''
+      let titleFallback = ''
       for (const line of lines) {
         const obj = parseLine(line)
         if (!obj || typeof obj !== 'object') continue
@@ -182,6 +186,14 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
         }
         if (event.type === 'request/context') {
           if (typeof event.data?.model === 'string') model = event.data.model
+          continue
+        }
+        if (event.type === 'session/title') {
+          if (typeof event.data?.title === 'string') {
+            const source = event.data?.source
+            if (source?.kind === 'provider') title = event.data.title
+            else if (titleFallback === '') titleFallback = event.data.title
+          }
           continue
         }
         if (event.type === 'assistant/message') {
@@ -203,6 +215,7 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
             cacheWrite,
             file,
             session,
+            sessionName: title || titleFallback || undefined,
           })
         }
       }
@@ -216,9 +229,11 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
  * Each `event_msg` of type `token_count` carries `last_token_usage` (a delta)
  * and `total_token_usage` (cumulative). Summing `last_token_usage` per file
  * gives that file's actual contribution and survives continuation restarts.
- * The model rides on `turn_context` payloads.
+ * The model rides on `turn_context` payloads. Human-readable session names
+ * come from `$CODEX_HOME/session_index.jsonl` (id -> thread_name).
  */
 function collectCodex(roots: string[]): UsageRecord[] {
+  const titles = loadCodexSessionTitles()
   const records: UsageRecord[] = []
   for (const root of roots) {
     walkFiles(root, (file) => {
@@ -226,11 +241,16 @@ function collectCodex(roots: string[]): UsageRecord[] {
       let model = 'unknown'
       const totals = { input: 0, output: 0, cacheHit: 0, cacheWrite: 0 }
       let lastTimestamp = 0
+      let sessionId = (file.split(/[\\/]/).pop() ?? file).replace(/^rollout-/, '').replace(/\.jsonl$/, '')
       const lines = readJsonLines(file)
       for (const line of lines) {
         const obj = parseLine(line)
         if (!obj || typeof obj !== 'object') continue
         const event = obj as Record<string, any>
+        if (event.type === 'session_meta') {
+          if (typeof event.payload?.session_id === 'string') sessionId = event.payload.session_id
+          continue
+        }
         if (event.type === 'turn_context') {
           if (typeof event.payload?.model === 'string') model = event.payload.model
           continue
@@ -249,8 +269,6 @@ function collectCodex(roots: string[]): UsageRecord[] {
         }
       }
       if (totals.input + totals.output + totals.cacheHit + totals.cacheWrite === 0) return
-      // Session id = the rollout file stem (`rollout-<uuid>`).
-      const session = (file.split(/[\\/]/).pop() ?? file).replace(/\.jsonl$/, '')
       records.push({
         source: 'codex',
         category: model,
@@ -260,11 +278,34 @@ function collectCodex(roots: string[]): UsageRecord[] {
         cacheHit: totals.cacheHit,
         cacheWrite: totals.cacheWrite,
         file,
-        session,
+        session: sessionId,
+        sessionName: titles.get(sessionId) ?? undefined,
       })
     })
   }
   return records
+}
+
+/** Load `$CODEX_HOME/session_index.jsonl` (id -> thread_name). Tolerant of absence/corruption. */
+function loadCodexSessionTitles(): Map<string, string> {
+  const titles = new Map<string, string>()
+  const home = homedir()
+  const codexHome = process.env.CODEX_HOME || join(home, '.codex')
+  const indexFile = join(codexHome, 'session_index.jsonl')
+  if (!existsSync(indexFile)) return titles
+  try {
+    for (const line of readFileSync(indexFile, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const obj = parseLine(trimmed) as Record<string, any> | null
+      if (obj && typeof obj.id === 'string' && typeof obj.thread_name === 'string' && obj.thread_name !== '') {
+        titles.set(obj.id, obj.thread_name)
+      }
+    }
+  } catch {
+    // unreadable index: session names stay empty
+  }
+  return titles
 }
 
 /** OpenCode: SQLite database (`session` table, one row per session). */
@@ -284,7 +325,7 @@ function collectOpencode(dbs: string[]): UsageRecord[] {
     }
     try {
       const rows = db
-        .prepare('SELECT id, time_created, model, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session')
+        .prepare('SELECT id, time_created, model, title, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session')
         .all() as Array<Record<string, any>>
       for (const row of rows) {
         const input = safeNumber(row.tokens_input)
@@ -311,6 +352,7 @@ function collectOpencode(dbs: string[]): UsageRecord[] {
           cacheWrite,
           file: resolved,
           session: String(row.id ?? 'unknown'),
+          sessionName: typeof row.title === 'string' && row.title !== '' ? row.title : undefined,
         })
       }
     } catch {
