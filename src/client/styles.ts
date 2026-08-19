@@ -233,6 +233,89 @@ html[data-dsh-token-usage-active]:not([data-dsh-ssh-active]):not([data-dsh-taskb
   color: var(--dsw-alias-accent);
 }
 
+/* --- totals chart (source/category/day distribution) -------------------------- */
+
+.dsh-tu-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-specific-input-major);
+}
+
+.dsh-tu-chartRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 180px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.dsh-tu-chartLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-tu-chartBar {
+  display: flex;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--dsw-alias-border-l3, var(--dsw-alias-border-l2));
+  min-width: 40px;
+}
+
+.dsh-tu-chartSegMiss {
+  background: #4c8dff;
+}
+
+.dsh-tu-chartSegHit {
+  background: #2ecc71;
+}
+
+.dsh-tu-chartSegWrite {
+  background: #f5a623;
+}
+
+.dsh-tu-chartSegOutput {
+  background: #e5484d;
+}
+
+.dsh-tu-chartValue {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.dsh-tu-chartLegend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  flex: none;
+}
+
+.dsh-tu-legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dsh-tu-legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
 /* --- groups table -------------------------------------------------------------- */
 
 .dsh-tu-section {

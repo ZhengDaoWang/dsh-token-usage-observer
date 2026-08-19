@@ -53,8 +53,17 @@ async function run() {
   const parsed = JSON.parse(res200.body)
   console.log('   totals:', JSON.stringify(parsed.totals))
   console.log('   groups:', parsed.groups.length)
+  console.log('   sessions:', parsed.sessions.length)
   console.log('   scanned:', JSON.stringify(parsed.scanned.map(s => ({ source: s.source, files: s.files, records: s.records }))))
   if (typeof parsed.totals.estimatedCost !== 'number') throw new Error('totals.estimatedCost missing')
+  if (!Array.isArray(parsed.sessions)) throw new Error('sessions missing')
+  if (parsed.sessions.length > 0) {
+    const first = parsed.sessions[0]
+    if (typeof first.session !== 'string' || typeof first.source !== 'string' || typeof first.requests !== 'number') {
+      throw new Error(`session shape wrong: ${JSON.stringify(first)}`)
+    }
+    console.log('   top session:', JSON.stringify({ source: first.source, session: first.session, requests: first.requests, cost: first.estimatedCost }))
+  }
 
   // --- 1c. invalid price ------------------------------------------------------
   const res400 = fakeResponse()

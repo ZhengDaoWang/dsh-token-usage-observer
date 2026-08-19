@@ -166,6 +166,8 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
       const name = file.split(/[\\/]/).pop() ?? ''
       if (!name.startsWith('session.jsonl')) return
       const lines = readJsonLines(file)
+      // Session id = the owning directory (`session-<uuid>`).
+      const session = file.split(/[\\/]/).filter(Boolean).slice(-2)[0] ?? name
       let agentPreset = 'unknown'
       let model = 'unknown'
       let createdAt = 0
@@ -200,6 +202,7 @@ function collectDeepseekHarness(roots: string[]): UsageRecord[] {
             cacheHit,
             cacheWrite,
             file,
+            session,
           })
         }
       }
@@ -246,6 +249,8 @@ function collectCodex(roots: string[]): UsageRecord[] {
         }
       }
       if (totals.input + totals.output + totals.cacheHit + totals.cacheWrite === 0) return
+      // Session id = the rollout file stem (`rollout-<uuid>`).
+      const session = (file.split(/[\\/]/).pop() ?? file).replace(/\.jsonl$/, '')
       records.push({
         source: 'codex',
         category: model,
@@ -255,6 +260,7 @@ function collectCodex(roots: string[]): UsageRecord[] {
         cacheHit: totals.cacheHit,
         cacheWrite: totals.cacheWrite,
         file,
+        session,
       })
     })
   }
@@ -278,7 +284,7 @@ function collectOpencode(dbs: string[]): UsageRecord[] {
     }
     try {
       const rows = db
-        .prepare('SELECT time_created, model, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session')
+        .prepare('SELECT id, time_created, model, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session')
         .all() as Array<Record<string, any>>
       for (const row of rows) {
         const input = safeNumber(row.tokens_input)
@@ -304,6 +310,7 @@ function collectOpencode(dbs: string[]): UsageRecord[] {
           cacheHit,
           cacheWrite,
           file: resolved,
+          session: String(row.id ?? 'unknown'),
         })
       }
     } catch {

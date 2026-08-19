@@ -2,14 +2,15 @@
  * Token-usage dashboard — the WebUI surface of the plugin.
  *
  * Filter bar (source / time range / category / groupBy / prices) drives a
- * fetch to the host stats route; the result renders as summary cards, a group
- * table, and scan diagnostics. Plain React, no UI kit; styles come from the
- * injected plugin stylesheet (`dsh-tu-*` classes).
+ * fetch to the host stats route; the result renders as summary cards, a
+ * totals distribution chart (stacked token bars per group), a per-session
+ * detail list, and scan diagnostics. Plain React, no UI kit; styles come from
+ * the injected plugin stylesheet (`dsh-tu-*` classes).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { StatsApi, StatsApiError, type StatsQuery } from './api.ts'
 import { SOURCE_LABELS, SOURCES } from '../types.ts'
-import type { UsageGroup, UsageStatsResult } from '../types.ts'
+import type { UsageGroup, UsageSession, UsageStatsResult } from '../types.ts'
 
 export interface DashboardProps {
   api: StatsApi
@@ -36,6 +37,13 @@ function usd(cost: number): string {
   if (cost >= 100) return `$${cost.toFixed(2)}`
   if (cost >= 0.01) return `$${cost.toFixed(4)}`
   return `$${cost.toFixed(6)}`
+}
+
+/** Short session id: keep the tail of the id after the last `-` segment run. */
+function shortSession(session: string): string {
+  if (session.length <= 16) return session
+  const tail = session.split('-').filter(Boolean).pop() ?? session
+  return tail.length > 12 ? `…${tail.slice(-12)}` : `…${tail}`
 }
 
 export function Dashboard({ api }: DashboardProps): JSX.Element {
@@ -121,12 +129,17 @@ export function Dashboard({ api }: DashboardProps): JSX.Element {
 
   const totals = result?.totals
   const groups = result?.groups ?? []
+  const sessions = result?.sessions ?? []
 
   const sourceLabel = (key: string): string => {
     if (key in SOURCE_LABELS) return SOURCE_LABELS[key as keyof typeof SOURCE_LABELS]
-    if (groupBy === 'day') return key
     return key
   }
+
+  // Stacked bar segments: cache miss (input) / cache hit (input) / cache
+  // write / output, scaled to the largest bucket in the group list.
+  const maxTotal = Math.max(1, ...groups.map(g => g.cacheMiss + g.cacheHit + g.cacheWrite + g.output))
+  const barSeg = (value: number): string => `${Math.max(0, (value / maxTotal) * 100)}%`
 
   return (
     <div className="dsh-tu-dashboard" data-dsh-plugin="token-usage-observer">
@@ -161,7 +174,7 @@ export function Dashboard({ api }: DashboardProps): JSX.Element {
           <input className="dsh-tu-input" type="text" placeholder="如 deepseek-chat" value={category} onChange={e => setCategory(e.target.value)} />
         </label>
         <label className="dsh-tu-field">
-          <span className="dsh-tu-fieldLabel">分组维度</span>
+          <span className="dsh-tu-fieldLabel">图表分组维度</span>
           <select className="dsh-tu-select" value={groupBy} onChange={e => setGroupBy(e.target.value as StatsQuery['groupBy'])}>
             {GROUPBY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -221,37 +234,69 @@ export function Dashboard({ api }: DashboardProps): JSX.Element {
         </div>
       )}
 
+      {result !== null && groups.length > 0 && (
+        <div className="dsh-tu-chart">
+          <h3 className="dsh-tu-sectionTitle">总量分布（{sourceLabel((groupBy ?? 'source') === 'none' ? 'total' : groupBy ?? 'source')}）</h3>
+          {groups.map((group: UsageGroup) => (
+            <div className="dsh-tu-chartRow" key={group.key}>
+              <span className="dsh-tu-chartLabel" title={group.key}>{sourceLabel(group.key)}</span>
+              <div className="dsh-tu-chartBar">
+                <div className="dsh-tu-chartSegMiss" style={{ width: barSeg(group.cacheMiss) }} />
+                <div className="dsh-tu-chartSegHit" style={{ width: barSeg(group.cacheHit) }} />
+                <div className="dsh-tu-chartSegWrite" style={{ width: barSeg(group.cacheWrite) }} />
+                <div className="dsh-tu-chartSegOutput" style={{ width: barSeg(group.output) }} />
+              </div>
+              <span className="dsh-tu-chartValue" title={`请求 ${fmt(group.requests)} · 输入(未缓存) ${fmt(group.cacheMiss)} · 输入(缓存命中) ${fmt(group.cacheHit)} · 缓存写入 ${fmt(group.cacheWrite)} · 输出 ${fmt(group.output)} · 命中率 ${pct(group.cacheHitRate)}`}>
+                {usd(group.estimatedCost)}
+              </span>
+            </div>
+          ))}
+          <div className="dsh-tu-chartLegend">
+            <span className="dsh-tu-legendItem"><span className="dsh-tu-legendSwatch dsh-tu-chartSegMiss" />输入(未缓存)</span>
+            <span className="dsh-tu-legendItem"><span className="dsh-tu-legendSwatch dsh-tu-chartSegHit" />输入(缓存命中)</span>
+            <span className="dsh-tu-legendItem"><span className="dsh-tu-legendSwatch dsh-tu-chartSegWrite" />缓存写入</span>
+            <span className="dsh-tu-legendItem"><span className="dsh-tu-legendSwatch dsh-tu-chartSegOutput" />输出</span>
+          </div>
+        </div>
+      )}
+
       {result !== null && (
         <div className="dsh-tu-section">
-          <h3 className="dsh-tu-sectionTitle">分组明细（{groups.length}）</h3>
-          {groups.length === 0 ? (
+          <h3 className="dsh-tu-sectionTitle">会话明细（{sessions.length}，按费用降序）</h3>
+          {sessions.length === 0 ? (
             <div className="dsh-tu-empty">无匹配记录</div>
           ) : (
             <div className="dsh-tu-tableWrap">
               <table className="dsh-tu-table">
                 <thead>
                   <tr>
-                    <th className="dsh-tu-left">分组</th>
+                    <th className="dsh-tu-left">来源</th>
+                    <th className="dsh-tu-left">会话</th>
+                    <th className="dsh-tu-left">模型 / 预设</th>
+                    <th className="dsh-tu-left">最近时间</th>
                     <th>请求数</th>
                     <th>输入(未缓存)</th>
                     <th>输入(缓存命中)</th>
                     <th>缓存写入</th>
                     <th>输出</th>
-                    <th>缓存命中率</th>
-                    <th>预计费用</th>
+                    <th>命中率</th>
+                    <th>费用</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((group: UsageGroup) => (
-                    <tr key={group.key}>
-                      <td className="dsh-tu-left">{sourceLabel(group.key)}</td>
-                      <td>{fmt(group.requests)}</td>
-                      <td>{fmt(group.cacheMiss)}</td>
-                      <td>{fmt(group.cacheHit)}</td>
-                      <td>{fmt(group.cacheWrite)}</td>
-                      <td>{fmt(group.output)}</td>
-                      <td>{pct(group.cacheHitRate)}</td>
-                      <td>{usd(group.estimatedCost)}</td>
+                  {sessions.map((session: UsageSession) => (
+                    <tr key={session.key}>
+                      <td className="dsh-tu-left">{sourceLabel(session.source)}</td>
+                      <td className="dsh-tu-left" title={session.session}>{shortSession(session.session)}</td>
+                      <td className="dsh-tu-left" title={session.category}>{session.category}</td>
+                      <td className="dsh-tu-left">{session.timestamp > 0 ? new Date(session.timestamp).toISOString().slice(0, 10) : '-'}</td>
+                      <td>{fmt(session.requests)}</td>
+                      <td>{fmt(session.cacheMiss)}</td>
+                      <td>{fmt(session.cacheHit)}</td>
+                      <td>{fmt(session.cacheWrite)}</td>
+                      <td>{fmt(session.output)}</td>
+                      <td>{pct(session.cacheHitRate)}</td>
+                      <td>{usd(session.estimatedCost)}</td>
                     </tr>
                   ))}
                 </tbody>

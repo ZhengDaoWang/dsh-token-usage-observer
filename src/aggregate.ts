@@ -1,6 +1,6 @@
 /** Aggregation, filtering and rendering helpers. */
 
-import type { Prices, Source, SourceScan, UsageGroup, UsageRecord, UsageStatsResult, UsageTotals } from './types.ts'
+import type { Prices, Source, SourceScan, UsageGroup, UsageRecord, UsageSession, UsageStatsResult, UsageTotals } from './types.ts'
 
 export interface UsageStatsArgs {
   source?: 'all' | Source
@@ -12,6 +12,9 @@ export interface UsageStatsArgs {
 }
 
 const SOURCE_ORDER: Source[] = ['deepseek-harness', 'codex', 'opencode']
+
+/** Cap on the per-session detail list (dashboard shows the most expensive first). */
+export const SESSION_LIMIT = 200
 
 function emptyTotals(): UsageTotals {
   return { requests: 0, input: 0, output: 0, cacheMiss: 0, cacheHit: 0, cacheWrite: 0, cacheHitRate: 0, estimatedCost: 0 }
@@ -123,7 +126,41 @@ export function summarize(
   return {
     totals,
     groups: orderedGroups.map(([key, value]) => ({ key, ...value }) as UsageGroup),
+    sessions: summarizeSessions(filtered, prices),
     scanned,
     prices,
   }
+}
+
+/**
+ * Aggregate per-session detail rows: one bucket per `source:session`, carrying
+ * the session's totals, its best-known model/preset, and its latest timestamp.
+ * Sorted by estimated cost (desc), then requests (desc); capped at SESSION_LIMIT.
+ */
+function summarizeSessions(records: UsageRecord[], prices: Prices): UsageSession[] {
+  const sessions = new Map<string, UsageSession>()
+  for (const record of records) {
+    const key = `${record.source}:${record.session}`
+    const existing = sessions.get(key)
+    if (existing !== undefined) {
+      addTotals(existing, record)
+      if (record.category !== 'unknown' && record.category !== existing.category) existing.category = record.category
+      if (record.timestamp > existing.timestamp) existing.timestamp = record.timestamp
+    } else {
+      const totals = emptyTotals()
+      addTotals(totals, record)
+      sessions.set(key, {
+        key,
+        source: record.source,
+        session: record.session,
+        category: record.category,
+        timestamp: record.timestamp,
+        ...totals,
+      })
+    }
+  }
+  const list = [...sessions.values()]
+  for (const session of list) finalize(session, prices)
+  list.sort((a, b) => b.estimatedCost - a.estimatedCost || b.requests - a.requests)
+  return list.slice(0, SESSION_LIMIT)
 }

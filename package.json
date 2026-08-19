@@ -1,6 +1,6 @@
 {
   "name": "dsh-token-usage-observer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Collect and summarize local token usage from DeepSeek Harness, Codex and OpenCode logs, with a WebUI dashboard tab.",
   "license": "MIT",
   "type": "module",

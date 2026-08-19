@@ -120,6 +120,28 @@ export function apply(ctx: Context, config: PluginConfig = {}): void {
               },
             },
           },
+          sessions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                key: { type: 'string' },
+                source: { type: 'string' },
+                session: { type: 'string' },
+                category: { type: 'string' },
+                timestamp: { type: 'integer' },
+                requests: { type: 'integer' },
+                input: { type: 'integer' },
+                output: { type: 'integer' },
+                cacheMiss: { type: 'integer' },
+                cacheHit: { type: 'integer' },
+                cacheWrite: { type: 'integer' },
+                cacheHitRate: { type: 'number' },
+                estimatedCost: { type: 'number' },
+              },
+            },
+          },
           scanned: {
             type: 'array',
             items: {

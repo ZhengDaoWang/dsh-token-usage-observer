@@ -8,7 +8,8 @@ Collect and summarize local token usage from DeepSeek Harness, Codex (ChatGPT) a
 
 - Aggregates token usage from three sources: input (cache miss), input (cache hit), cache write and output, plus cache hit rate and estimated cost
 - WebUI sidebar "Token 统计" entry opens a center-column dashboard: filter by source, date range (`YYYY-MM-DD`), category (model id / agent preset) and group dimension; unit prices adjustable live in the dashboard
-- Agent tool `usage_stats` uses the same pipeline, group by source / category / day / none
+- Dashboard shows a totals distribution chart (stacked bars by source / category / day) and a per-session detail list (each session's token usage, hit rate and cost, sorted by cost)
+- Agent tool `usage_stats` uses the same pipeline, group by source / category / day / none, with a session detail table
 - Configurable prices (defaults follow DeepSeek public pricing: input $0.14 / cache hit $0.014 / output $0.28 per 1M tokens; cache write defaults to $0; all default to 0)
 - Read-only over local logs; silently skips corrupt or unreadable files
 
@@ -33,9 +34,10 @@ dsh plugin --profile web remove dsh-token-usage-observer
 
 After install and restart, the sidebar shows the "Token 统计" entry (below the New Session button, in the same block as the task board / SSH entries). Click to open the center-column dashboard:
 
-- **Filter bar**: source (all / DeepSeek Harness / Codex / OpenCode), start / end date, category (model or preset substring), group dimension (source / category / day / none), four unit prices ($ per 1M tokens)
+- **Filter bar**: source (all / DeepSeek Harness / Codex / OpenCode), start / end date, category (model or preset substring), chart group dimension (source / category / day / none), four unit prices ($ per 1M tokens)
 - **Summary cards**: requests, input (cache miss), input (cache hit), cache write, output, cache hit rate, estimated cost
-- **Group table**: per-group metrics under the selected group dimension
+- **Distribution chart**: stacked bars (cache-miss input / cache-hit input / cache write / output segments) per group with each group's cost
+- **Session detail list**: per-session rows (session id, model/preset, latest date, requests, token metrics, hit rate, cost, sorted by cost desc)
 - **Scan diagnostics**: files and records scanned per source
 
 ## Usage / 使用

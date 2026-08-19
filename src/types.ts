@@ -27,6 +27,8 @@ export interface UsageRecord {
   cacheWrite: number
   /** Origin file the record was parsed from. */
   file: string
+  /** Session identifier: harness session dir name, codex rollout file, opencode db row id. */
+  session: string
 }
 
 /** Aggregated token totals for one bucket. */
@@ -48,6 +50,19 @@ export interface UsageGroup extends UsageTotals {
   key: string
 }
 
+/** Per-session aggregated totals (the dashboard detail list). */
+export interface UsageSession extends UsageTotals {
+  /** Composite key: `<source>:<session>`. */
+  key: string
+  source: Source
+  /** Session id (harness session-<uuid>, codex rollout id, opencode db row id). */
+  session: string
+  /** Model / agent preset of the session (best known). */
+  category: string
+  /** Latest record timestamp in the session (epoch ms). */
+  timestamp: number
+}
+
 /** Per-source scan diagnostics. */
 export interface SourceScan {
   source: Source
@@ -59,6 +74,7 @@ export interface SourceScan {
 export interface UsageStatsResult {
   totals: UsageTotals
   groups: UsageGroup[]
+  sessions: UsageSession[]
   scanned: SourceScan[]
   prices: Prices
 }
