@@ -82,4 +82,6 @@ export interface PluginConfig {
   opencodeDbs?: string[]
   /** Default prices per 1M tokens, in USD. */
   prices?: Partial<Prices>
+  /** Announce the plugin (dashboard + tool) to agents in the system prompt. Default true. */
+  announceToAgent?: boolean
 }

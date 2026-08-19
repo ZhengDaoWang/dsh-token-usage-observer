@@ -55,15 +55,82 @@ function readJsonLines(file: string): string[] {
   const buffer = readFileSync(file)
   let text: string
   if (file.endsWith('.zstd')) {
-    try {
-      text = zstdDecompressSync(buffer).toString('utf8')
-    } catch {
-      text = buffer.toString('utf8')
-    }
+    text = zstdDecodeAllFrames(buffer)
   } else {
     text = buffer.toString('utf8')
   }
   return text.split(/\r?\n/)
+}
+
+/**
+ * Decode a DSH session log: a concatenation of independent Zstandard frames
+ * (one header frame, then one frame per durable append batch). Node's
+ * `zstdDecompressSync` only decodes the FIRST frame, so a multi-frame file
+ * would silently lose every appended event — this scans frame boundaries and
+ * decodes each frame separately. Tolerant: complete frames are always decoded
+ * (a torn final frame from a live session is skipped); a file that is not a
+ * valid frame container at all falls back to a single-shot decode.
+ */
+function zstdDecodeAllFrames(buffer: Buffer): string {
+  const ZSTD_MAGIC = 0xFD2FB528
+  const frames: Array<{ start: number; end: number }> = []
+  let offset = 0
+  let structured = false
+  try {
+    while (offset < buffer.length) {
+      const start = offset
+      if (buffer.length - offset < 4 || buffer.readUInt32LE(offset) !== ZSTD_MAGIC) throw new Error('invalid frame magic')
+      offset += 4
+      structured = true
+      const descriptor = buffer.readUInt8(offset)
+      offset += 1
+      if ((descriptor & 24) !== 0) throw new Error('reserved frame-header bit')
+      const contentSizeFlag = descriptor >>> 6
+      const singleSegment = (descriptor & 32) !== 0
+      const checksum = (descriptor & 4) !== 0
+      const dictionaryFlag = descriptor & 3
+      const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag
+      const contentSizeBytes = contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : 1 << contentSizeFlag
+      const remainingHeaderBytes = (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes
+      if (buffer.length - offset < remainingHeaderBytes) throw new Error('truncated frame header')
+      offset += remainingHeaderBytes
+      for (;;) {
+        if (buffer.length - offset < 3) throw new Error('truncated block header')
+        const blockHeader = buffer.readUIntLE(offset, 3)
+        offset += 3
+        const lastBlock = (blockHeader & 1) !== 0
+        const blockType = (blockHeader >>> 1) & 3
+        const blockSize = blockHeader >>> 3
+        if (blockType === 3) throw new Error('reserved block type')
+        const payloadBytes = blockType === 1 ? 1 : blockSize
+        if (buffer.length - offset < payloadBytes) throw new Error('truncated block payload')
+        offset += payloadBytes
+        if (lastBlock) break
+      }
+      if (checksum) {
+        if (buffer.length - offset < 4) throw new Error('truncated checksum')
+        offset += 4
+      }
+      frames.push({ start, end: offset })
+    }
+  } catch {
+    // The final frame may be torn (the session is live and still appending).
+    // Complete frames collected so far are still valid; the tail is skipped.
+    // A file with NO complete frame (or invalid magic at the very start) is
+    // not a multi-frame container — fall through to the single-shot decode.
+    if (frames.length === 0 || !structured) {
+      try {
+        return zstdDecompressSync(buffer).toString('utf8')
+      } catch {
+        return buffer.toString('utf8')
+      }
+    }
+  }
+  let text = ''
+  for (const frame of frames) {
+    text += zstdDecompressSync(buffer.subarray(frame.start, frame.end)).toString('utf8')
+  }
+  return text
 }
 
 function parseLine(line: string): unknown {

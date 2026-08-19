@@ -1,18 +1,49 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-host-webserver'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 
 import { collectAll } from './collect.ts'
 import { summarize } from './aggregate.ts'
 import { renderResult } from './render.ts'
+import { makeStatsRoutes, STATS_API_PREFIX } from './routes.ts'
 import type { PluginConfig, Prices } from './types.ts'
+
+export { makeStatsRoutes, STATS_API_PREFIX } from './routes.ts'
 
 export const name = 'dsh-token-usage-observer'
 
-export const inject = ['tools']
+export const inject = ['tools', 'webServer', 'systemPrompt']
 
 export const usage = '统计本机 DeepSeek Harness / Codex / OpenCode 的 token 用量与费用'
 
+/** Model-facing announcement: plugin presence, capabilities, and the WebUI dashboard. */
+export const TOKEN_USAGE_GUIDANCE = '本机已安装 dsh-token-usage-observer 插件：侧边栏「Token 统计」看板 + usage_stats 工具，统计本机 DeepSeek Harness / Codex (ChatGPT) / OpenCode 的 token 用量（输入缓存未命中/缓存命中/缓存写入、输出）、缓存命中率与预计费用，数据来自本地会话日志。支持按来源、时间段（YYYY-MM-DD）与分类（模型/agent preset）筛选。用户提到「token 统计 / 用量 / 费用 / 看板」时即指本插件，请据此协作。'
+
 export function apply(ctx: Context, config: PluginConfig = {}): void {
+  // WebUI dashboard data endpoint (same origin, loopback-fenced).
+  ctx.effect(() => {
+    const disposers: Array<() => void> = []
+    try {
+      for (const route of makeStatsRoutes(config)) disposers.push(ctx.webServer.register(route))
+    } catch (error) {
+      for (const dispose of disposers) dispose()
+      throw error
+    }
+    return () => {
+      for (const dispose of disposers) dispose()
+    }
+  }, 'dsh-token-usage-observer: stats routes')
+
+  // Model-facing announcement of the plugin (dashboard + tool).
+  if (config.announceToAgent !== false) {
+    ctx.effect(() => ctx.systemPrompt.section({
+      name: 'plugin:dsh-token-usage-observer',
+      order: 200,
+      text: TOKEN_USAGE_GUIDANCE,
+    }), 'dsh-token-usage-observer: announcement')
+  }
+
   ctx.tools.register(defineTool({
     name: 'usage_stats',
     description:

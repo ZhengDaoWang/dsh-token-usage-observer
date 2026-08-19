@@ -1,23 +1,23 @@
 # dsh-token-usage-observer
 
-统计本机 DeepSeek Harness / Codex (ChatGPT) / OpenCode 的 token 用量与预计费用，并作为 DeepSeek Harness 插件（agent tool）使用。
+统计本机 DeepSeek Harness / Codex (ChatGPT) / OpenCode 的 token 用量与预计费用，提供 agent 工具（`usage_stats`）与 WebUI 侧边栏「Token 统计」看板。
 
-Collect and summarize local token usage from DeepSeek Harness, Codex (ChatGPT) and OpenCode logs, exposed as a DeepSeek Harness plugin tool.
+Collect and summarize local token usage from DeepSeek Harness, Codex (ChatGPT) and OpenCode logs, exposed as a DeepSeek Harness plugin: an agent tool (`usage_stats`) plus a WebUI sidebar dashboard tab.
 
 ## 功能 / Features
 
 - 聚合三个来源的 token 用量：输入（缓存未命中）、输入（缓存命中）、缓存写入、输出，并计算缓存命中率与预计费用
-- 支持按来源、时间段（`YYYY-MM-DD`，本地时区）与分类（模型 id / agent preset）筛选
-- 支持按来源 / 分类 / 日期 / 不分组四种分组维度
+- WebUI 侧边栏新增「Token 统计」入口：打开中心列看板，支持按来源、时间段（`YYYY-MM-DD`）、分类（模型 id / agent preset）与分组维度筛选，单价可在看板内实时调整
+- agent 工具 `usage_stats`：同样的统计管线，支持按来源 / 分类 / 日期 / 不分组四种分组维度
 - 费用单价可配置（默认按 DeepSeek 公开价：输入 $0.14 / 缓存命中 $0.014 / 输出 $0.28，每百万 token；缓存写入默认 $0，全部默认 0）
 - 只读本地日志，不修改任何数据；对损坏/无法读取的文件静默跳过
 
 ## 安装 / Install
 
-上传到 GitHub 后，通过 dsh 插件命令安装：
+通过 dsh 插件命令安装（bundle 形态，构建产物随仓库分发，无需本地构建）：
 
 ```sh
-dsh plugin --profile web add "github:<owner>/<repo>"
+dsh plugin --profile web add "github:ZhengDaoWang/dsh-token-usage-observer"
 ```
 
 更新 / 移除：
@@ -26,6 +26,17 @@ dsh plugin --profile web add "github:<owner>/<repo>"
 dsh plugin --profile web update dsh-token-usage-observer
 dsh plugin --profile web remove dsh-token-usage-observer
 ```
+
+> 安装 / 更新后需重启 `dsh web`，侧边栏「Token 统计」入口与看板才会加载。
+
+## WebUI 看板 / Dashboard
+
+安装并重启后，侧边栏出现「Token 统计」入口（New Session 按钮下方、与任务看板 / SSH 入口同一区块）。点击打开中心列看板：
+
+- **筛选栏**：来源（全部 / DeepSeek Harness / Codex / OpenCode）、起始 / 结束日期、分类（模型或 preset 子串）、分组维度（按来源 / 分类 / 日期 / 不分组）、四档单价（$ / 1M token）
+- **统计卡片**：请求数、输入（缓存未命中）、输入（缓存命中）、缓存写入、输出、缓存命中率、预计费用
+- **分组明细表**：按所选分组维度列出各分组指标
+- **扫描范围**：各来源扫描的文件数与记录数
 
 ## 使用 / Usage
 
@@ -58,7 +69,13 @@ dsh plugin --profile web remove dsh-token-usage-observer
 
 ## 插件配置 / Plugin config
 
-插件支持可选的 `paths`（各来源自定义路径）与 `prices`（默认单价）配置，通过 cordis patch 的 `config` 字段注入。
+插件支持可选的 `paths`（各来源自定义路径）、`prices`（默认单价）与 `announceToAgent`（是否向 agent 公告本插件，默认 `true`）配置，通过 cordis patch 的 `config` 字段注入。
+
+## 架构 / Architecture
+
+- **Node 半区**（`src/index.ts`、`src/routes.ts`）：注册 `usage_stats` 工具与 `GET /dsh-token-usage/stats` HTTP 路由（loopback + 浏览器同源防护），复用同一 collect/summarize 管线
+- **浏览器半区**（`src/client/`）：`lib/client.js` 经 `__ModuleLoader__` 契约注入 WebUI，挂载侧边栏入口行与中心列看板 React 根
+- **构建**：tsdown 双入口（`src/index.ts` → `lib/index.js`，`src/client/index.ts` → `lib/client.js`）
 
 ## 开发 / Development
 
@@ -67,7 +84,7 @@ npm.cmd install
 npm.cmd run check   # typecheck + build
 ```
 
-构建产物输出到 `lib/`。插件遵循 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 插件规范（cordis patch + `dsh-tools` `defineTool`）。
+构建产物输出到 `lib/`（含 `lib/client.js` 浏览器半区）。插件遵循 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 插件规范（cordis patch + `dsh-tools` `defineTool` + `dsh.client` 声明）。
 
 ## License
 
